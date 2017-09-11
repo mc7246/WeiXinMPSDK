@@ -372,6 +372,12 @@ namespace Senparc.Weixin.MP.Sample.CommonService.CustomMessageHandler
                     defaultResponseMessage.Content = result.ToString();
                     return defaultResponseMessage;
                 })
+                //“一次订阅消息”接口测试
+                .Keyword("订阅", () =>
+                {
+                        defaultResponseMessage.Content = "点击打开：https://sdk.weixin.senparc.com/SubscribeMsg";
+                        return defaultResponseMessage;
+                })
                 //正则表达式
                 .Regex(@"^\d+#\d+$", () =>
                 {
@@ -408,23 +414,34 @@ namespace Senparc.Weixin.MP.Sample.CommonService.CustomMessageHandler
         /// <returns></returns>
         public override IResponseMessageBase OnImageRequest(RequestMessageImage requestMessage)
         {
-            var responseMessage = CreateResponseMessage<ResponseMessageNews>();
-            responseMessage.Articles.Add(new Article()
+            //一隔一返回News或Image格式
+            if (base.WeixinContext.GetMessageContext(requestMessage).RequestMessages.Count() % 2 == 0)
             {
-                Title = "您刚才发送了图片信息",
-                Description = "您发送的图片将会显示在边上",
-                PicUrl = requestMessage.PicUrl,
-                Url = "http://sdk.weixin.senparc.com"
-            });
-            responseMessage.Articles.Add(new Article()
-            {
-                Title = "第二条",
-                Description = "第二条带连接的内容",
-                PicUrl = requestMessage.PicUrl,
-                Url = "http://sdk.weixin.senparc.com"
-            });
+                var responseMessage = CreateResponseMessage<ResponseMessageNews>();
 
-            return responseMessage;
+                responseMessage.Articles.Add(new Article()
+                {
+                    Title = "您刚才发送了图片信息",
+                    Description = "您发送的图片将会显示在边上",
+                    PicUrl = requestMessage.PicUrl,
+                    Url = "http://sdk.weixin.senparc.com"
+                });
+                responseMessage.Articles.Add(new Article()
+                {
+                    Title = "第二条",
+                    Description = "第二条带连接的内容",
+                    PicUrl = requestMessage.PicUrl,
+                    Url = "http://sdk.weixin.senparc.com"
+                });
+
+                return responseMessage;
+            }
+            else
+            {
+                var responseMessage = CreateResponseMessage<ResponseMessageImage>();
+                responseMessage.Image.MediaId = requestMessage.MediaId;
+                return responseMessage;
+            }
         }
 
         /// <summary>

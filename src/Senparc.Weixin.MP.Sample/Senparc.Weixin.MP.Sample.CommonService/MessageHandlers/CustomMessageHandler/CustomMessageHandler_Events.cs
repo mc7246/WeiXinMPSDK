@@ -78,6 +78,8 @@ QQ群：342319110
 【jssdk】    测试JSSDK图文转发接口
 
 格式：【数字#数字】，如2010#0102，调用正则表达式匹配
+
+【订阅】     测试“一次性订阅消息”接口
 ",
                 version);
         }
@@ -280,6 +282,21 @@ QQ群：342319110
                         var strongResponseMessage = CreateResponseMessage<ResponseMessageText>();
                         reponseMessage = strongResponseMessage;
                         strongResponseMessage.Content = "您点击了个性化菜单按钮，您的微信性别设置为：女。";
+                    }
+                    break;
+                case "GetNewMediaId"://获取新的MediaId
+                    {
+                        var strongResponseMessage = CreateResponseMessage<ResponseMessageText>();
+                        try
+                        {
+                            var result = AdvancedAPIs.MediaApi.UploadForeverMedia(appId, Server.GetMapPath("~/Images/logo.jpg"));
+                            strongResponseMessage.Content = result.media_id;
+                        }
+                        catch (Exception e)
+                        {
+                            strongResponseMessage.Content = "发生错误：" + e.Message;
+                            WeixinTrace.SendCustomLog("调用UploadForeverMedia()接口发生异常", e.Message);
+                        }
                     }
                     break;
                 default:
@@ -534,5 +551,14 @@ QQ群：342319110
             //    .CreateResponseMessage<ResponseMessageNoResponse>();
             return null;
         }
+
+        #region 微信认证事件推送
+
+        public override IResponseMessageBase OnEvent_QualificationVerifySuccess(RequestMessageEvent_QualificationVerifySuccess requestMessage)
+        {
+            return new SuccessResponseMessage();
+        }
+
+        #endregion
     }
 }

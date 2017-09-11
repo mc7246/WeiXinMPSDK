@@ -45,11 +45,22 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
     修改标识：Senparc - 20170302
     修改描述：v4.11.1 添加【ReturnCode.appsecret不正确】枚举类型（invalid appsecret，40125）
 
+    修改标识：Senparc - 20170328
+    修改描述：v4.12.1 添加【ReturnCode.小程序Appid不存在】枚举类型（invalid weapp appid，40166）
+
     修改标识：Senparc - 20170617
     修改描述：v4.12.3 提供对企业微信的支持：添加WorkJsonResult（企业微信返回消息基类）、ReturnCode_Work（枚举）
-    
-----------------------------------------------------------------*/
+ 
+    修改标识：Senparc - 20170702
+    修改描述：添加 PlatformType、CacheType
 
+    修改标识：Senparc - 20170726
+    修改描述：完成接口开放平台-代码管理及小程序码获取
+
+    修改标识：Senparc - 20170810
+    修改描述：v4.14.1 ReturnCode添加：没有留言权限 = 88000
+   
+----------------------------------------------------------------*/
 
 
 namespace Senparc.Weixin
@@ -67,6 +78,52 @@ namespace Senparc.Weixin
         /// POST 方法
         /// </summary>
         POST
+    }
+
+    /// <summary>
+    /// 平台类型
+    /// </summary>
+    public enum PlatformType
+    {
+        /// <summary>
+        /// 公众号
+        /// </summary>
+        MP,
+        /// <summary>
+        /// 开放平台
+        /// </summary>
+        Open,
+        /// <summary>
+        /// 小程序
+        /// </summary>
+        WxOpen,
+        /// <summary>
+        /// 企业号
+        /// </summary>
+        QY,
+        /// <summary>
+        /// 企业微信
+        /// </summary>
+        Work
+    }
+
+    /// <summary>
+    /// 缓存类型
+    /// </summary>
+    public enum CacheType
+    {
+        /// <summary>
+        /// 本地运行时缓存（单机）
+        /// </summary>
+        Local,
+        /// <summary>
+        /// Redis缓存（支持分布式）
+        /// </summary>
+        Redis,
+        /// <summary>
+        /// Memcached（支持分布式）
+        /// </summary>
+        Memcached
     }
 
     /// <summary>
@@ -121,6 +178,9 @@ namespace Senparc.Weixin
         不合法的分组id = 40050,
         分组名字不合法 = 40051,
         appsecret不正确 = 40125,//invalid appsecret
+
+        小程序Appid不存在 = 40166,
+
         缺少access_token参数 = 41001,
         缺少appid参数 = 41002,
         缺少refresh_token参数 = 41003,
@@ -192,7 +252,31 @@ namespace Senparc.Weixin
         发送消息失败_48小时内用户未互动 = 10706,
         发送消息失败_该用户已被加入黑名单_无法向此发送消息 = 62751,
         发送消息失败_对方关闭了接收消息 = 10703,
-        对方不是粉丝 = 10700
+        对方不是粉丝 = 10700,
+        没有留言权限 = 88000,//without comment privilege
+
+        //开放平台
+
+        该公众号_小程序已经绑定了开放平台帐号 = 89000,//account has bound open，该公众号/小程序已经绑定了开放平台帐号
+
+        //小程序代码管理返回码
+        不是由第三方代小程序进行调用 = 86000,
+        不存在第三方的已经提交的代码 = 86001,
+        标签格式错误 = 85006,
+        页面路径错误 = 85007,
+        类目填写错误 = 85008,
+        已经有正在审核的版本 = 85009,
+        item_list有项目为空 = 85010,
+        标题填写错误 = 85011,
+        无效的审核id = 85012,
+        没有审核版本 = 85019,
+        审核状态未满足发布 = 85020,
+        状态不可变 = 85021,
+        action非法 = 85022,
+        审核列表填写的项目数不在1到5以内 = 85023,
+        小程序还未设置昵称_头像_简介_请先设置完后再重新提交 = 86002
+
+
 #pragma warning restore CS1591 // 缺少对公共可见类型或成员的 XML 注释
     }
 

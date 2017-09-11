@@ -50,7 +50,7 @@ using Senparc.Weixin.MP.AppStore;
 using Senparc.Weixin.MP.Entities;
 using Senparc.Weixin.MP.Entities.Request;
 using Senparc.Weixin.MP.Helpers;
-using Tencent;
+using Senparc.Weixin.MP.Tencent;
 
 namespace Senparc.Weixin.MP.MessageHandlers
 {
@@ -296,6 +296,27 @@ namespace Senparc.Weixin.MP.MessageHandlers
 
             return RequestMessage.CreateResponseMessage<TR>();
         }
+
+        #region 扩展
+
+        ///// <summary>
+        ///// 根据当前的RequestMessage创建指定类型的ResponseMessage
+        ///// </summary>
+        ///// <typeparam name="TR">基于ResponseMessageBase的响应消息类型</typeparam>
+        ///// <returns></returns>
+        //public ResponseMessageText CreateResponseMessage<TR>(string content) where TR : ResponseMessageText
+        //{
+        //    if (RequestMessage == null)
+        //    {
+        //        return null;
+        //    }
+
+        //    var responseMessage = RequestMessage.CreateResponseMessage<TR>();
+        //    responseMessage.Content = content;
+        //    return responseMessage;
+        //}
+
+        #endregion
 
         /// <summary>
         /// 执行微信请求
