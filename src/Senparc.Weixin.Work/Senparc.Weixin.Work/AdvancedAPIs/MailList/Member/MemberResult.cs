@@ -1,7 +1,7 @@
 ﻿/*----------------------------------------------------------------
-    Copyright (C) 2017 Senparc
+    Copyright (C) 2021 Senparc
     
-    文件名：DepartmentResult.cs
+    文件名：MemberResult.cs
     文件功能描述：成员接口返回结果
     
     
@@ -13,11 +13,26 @@
     修改标识：Senparc - 20180828
     修改描述：v0.4.2 添加 GetMemberResult.order 属性
 
+    修改标识：Senparc - 20171017
+    修改描述：v1.2.0 部门id改为long类型
+
+    修改标识：lishewen - 20200318
+    修改描述：v3.7.401 修改 is_leader_in_dept 属性命名和类型
+
+    修改标识：WangDrama - 20200430
+    修改描述：v3.7.502 GetMemberResult 补充二维码属性
+
+    修改标识：Senparc - 2020825
+    修改描述：v3.7.510.1 GetMemberResult 补充 open_userid、main_department（主部门）属性
+
+    修改标识：WangDrama - 2020922
+    修改描述：v3.7.603 修改注释
 
 ----------------------------------------------------------------*/
 
 using System.Collections.Generic;
 using Senparc.Weixin.Entities;
+using Senparc.Weixin.Work.AdvancedAPIs.MailList.Member;
 
 namespace Senparc.Weixin.Work.AdvancedAPIs.MailList
 {
@@ -37,7 +52,7 @@ namespace Senparc.Weixin.Work.AdvancedAPIs.MailList
         /// <summary>
         /// 成员所属部门id列表
         /// </summary>
-        public int[] department { get; set; }
+        public long[] department { get; set; }
         /// <summary>
         /// 部门内的排序值，默认为0。数量必须和department一致，数值越大排序越前面。值范围是[0, 2^32)
         /// </summary>
@@ -64,13 +79,13 @@ namespace Senparc.Weixin.Work.AdvancedAPIs.MailList
         /// <summary>
         /// 上级字段，标识是否为上级。第三方暂不支持
         /// </summary>
-        public int isleader { get; set; }
+        public int[] is_leader_in_dept { get; set; }
         /// <summary>
         /// 头像url。注：小图将url最后的"/0"改成"/64"
         /// </summary>
         public string avatar { get; set; }
         /// <summary>
-        /// 激活状态: 1=已激活，2=已禁用，4=未激活 已激活代表已激活企业微信或已关注微信插件。未激活代表既未激活企业微信又未关注微信插件。
+        /// 激活状态: 1=已激活，2=已禁用，4=未激活，5=退出企业。 已激活代表已激活企业微信或已关注微信插件。未激活代表既未激活企业微信又未关注微信插件。
         /// </summary>
         public int status { get; set; }
         /// <summary>
@@ -81,6 +96,15 @@ namespace Senparc.Weixin.Work.AdvancedAPIs.MailList
         /// 英文名。第三方暂不支持
         /// </summary>
         public string english_name { get; set; }
+        /// <summary>
+        /// 全局唯一。对于同一个服务商，不同应用获取到企业内同一个成员的open_userid是相同的，最多64个字节。仅第三方应用可获取
+        /// </summary>
+        public string open_userid { get; set; }
+        /// <summary>
+        /// 主部门
+        /// </summary>
+        public int main_department { get; set; }
+
         /// <summary>
         /// 扩展属性
         /// </summary>
@@ -93,6 +117,11 @@ namespace Senparc.Weixin.Work.AdvancedAPIs.MailList
         /// 关注微信插件的状态: 1=已关注，0=未关注
         /// </summary>
         public string wxplugin_status { get; set; }
+
+        /// <summary>
+        /// 员工个人二维码，扫描可添加为外部联系人(注意返回的是一个url，可在浏览器上打开该url以展示二维码)；第三方仅通讯录应用可获取
+        /// </summary>
+        public string qr_code { get; set; }
     }
 
     public class GetDepartmentMemberResult : WorkJsonResult
@@ -119,22 +148,9 @@ namespace Senparc.Weixin.Work.AdvancedAPIs.MailList
         /// <summary>
         /// 成员所属部门
         /// </summary>
-        public int[] department { get; set; }
+        public long[] department { get; set; }
     }
 
-    /// <summary>
-    /// 扩展属性
-    /// </summary>
-    public class Extattr
-    {
-        public List<Attr> attrs { get; set; }
-    }
-
-    public class Attr
-    {
-        public string name { get; set; }
-        public string value { get; set; }
-    }
 
     /// <summary>
     /// 获取部门成员(详情)返回结果
@@ -154,4 +170,15 @@ namespace Senparc.Weixin.Work.AdvancedAPIs.MailList
         /// </summary>
         public int type { get; set; }
     }
+
+    /// <summary>
+    /// 邀请成员返回结果
+    /// </summary>
+    public class InviteMemberListResultJson : WorkJsonResult
+    {
+        public string[] invaliduser { get; set; }
+        public string[] invalidparty { get; set; }
+        public string[] invalidtag { get; set; }
+    }
+
 }
