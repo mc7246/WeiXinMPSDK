@@ -520,6 +520,8 @@ namespace Senparc.Weixin.Open
     /// </summary>
     public enum FastRegisterWeApp_Status
     {
+        非法ACTION参数 = -1,
+        请求成功 = 0,
         生成任务 = 1,
         任务超时 = 2,
         任务已经被用户拒绝 = 3,
