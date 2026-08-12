@@ -21,7 +21,7 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
 /*----------------------------------------------------------------
     Copyright (C) 2026 Senparc
 
-    文件名：WeixinContainer.cs
+    文件名：BaseContainer.cs
     文件功能描述：微信容器（如Ticket、AccessToken）
 
 
@@ -35,7 +35,7 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
 
     修改标识：Senparc - 20160813
     修改描述：v4.7.5 添加TryReRegister()方法，处理分布式缓存重启（丢失）的情况
-    
+
     修改标识：Senparc - 20170204
     修改描述：v4.10.3 添加RemoveFromCache方法
 
@@ -59,6 +59,12 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
 
     修改标识：Senparc - 20210127
     修改描述：RegisterFuncCollection 改为 ConcurrentDictionary 类型
+
+    修改标识：Senparc - 20260718
+    修改描述：v6.23.2 修复缓存策略热切换、空值移除和并发重注册问题
+
+    修改标识：Senparc - 20260718
+    修改描述：v6.24.0 新增注册回调注销、清理、容量与外部凭据入口
 
 ----------------------------------------------------------------*/
 
@@ -98,6 +104,9 @@ namespace Senparc.Weixin.Containers
     {
         private static IBaseObjectCacheStrategy _baseCache = null;
         private static IContainerCacheStrategy _containerCache = null;
+        private static readonly object CacheSyncRoot = new object();
+        private static readonly object RegistrationCallbackSyncRoot = new object();
+        private static int _maximumRegistrationCallbackCount = 10000;
 
         /// <summary>
         /// 获取符合当前缓存策略配置的缓存的操作对象实例
@@ -111,14 +120,22 @@ namespace Senparc.Weixin.Containers
 
                 //以下代码可以实现缓存“热切换”，损失的效率有限。如果需要追求极致效率，可以禁用type的判断
                 var containerCacheStrategy = ContainerCacheStrategyFactory.GetContainerCacheStrategyInstance()/*.ContainerCacheStrategy*/;
-                if (_containerCache == null || _containerCache.GetType() != containerCacheStrategy.GetType())
+                if (_containerCache == null ||
+                    _baseCache == null ||
+                    _containerCache.GetType() != containerCacheStrategy.GetType())
                 {
-                    _containerCache = containerCacheStrategy;
-                }
+                    lock (CacheSyncRoot)
+                    {
+                        containerCacheStrategy = ContainerCacheStrategyFactory.GetContainerCacheStrategyInstance();
+                        if (_containerCache == null ||
+                            _baseCache == null ||
+                            _containerCache.GetType() != containerCacheStrategy.GetType())
+                        {
+                            _containerCache = containerCacheStrategy;
+                            _baseCache = containerCacheStrategy.BaseCacheStrategy();
+                        }
+                    }
 
-                if (_baseCache == null)
-                {
-                    _baseCache = _baseCache ?? containerCacheStrategy.BaseCacheStrategy();
                 }
                 return _baseCache;
             }
@@ -180,8 +197,102 @@ namespace Senparc.Weixin.Containers
         /// <summary>
         /// 进行注册过程的委托集合
         /// </summary>
-        protected static ConcurrentDictionary<string, Func<Task<TBag>>> RegisterFuncCollection { get; set; } = new ConcurrentDictionary<string, Func<Task<TBag>>>(StringComparer.OrdinalIgnoreCase);
+        protected static ConcurrentDictionary<string, Func<Task<TBag>>> RegisterFuncCollection { get; set; } =
+            new ConcurrentDictionary<string, Func<Task<TBag>>>(StringComparer.OrdinalIgnoreCase);
         //TODO:同一个 appId 可能会对应 AccessToken、JsTicket 等多种 Container 情况。
+
+        /// <summary>当前保留的自动重注册委托数量。</summary>
+        public static int RegistrationCallbackCount => RegisterFuncCollection.Count;
+
+        /// <summary>自动重注册委托容量上限。默认 10000。</summary>
+        public static int MaximumRegistrationCallbackCount
+        {
+            get
+            {
+                lock (RegistrationCallbackSyncRoot)
+                {
+                    return _maximumRegistrationCallbackCount;
+                }
+            }
+            set
+            {
+                if (value <= 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(value), "注册委托容量必须大于 0。");
+                }
+
+                lock (RegistrationCallbackSyncRoot)
+                {
+                    if (value < RegisterFuncCollection.Count)
+                    {
+                        throw new InvalidOperationException($"当前已有 {RegisterFuncCollection.Count} 个注册委托，不能把容量降低到 {value}。");
+                    }
+
+                    _maximumRegistrationCallbackCount = value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 为 SDK 内部注册自动刷新委托，同时执行容量检查。
+        /// 保留 <see cref="RegisterFuncCollection"/> 的历史类型，以兼容外部派生容器。
+        /// </summary>
+        protected static void SetRegistrationCallback(string shortKey, Func<Task<TBag>> registerFunc)
+        {
+            if (shortKey == null)
+            {
+                throw new ArgumentNullException(nameof(shortKey));
+            }
+
+            if (registerFunc == null)
+            {
+                throw new ArgumentNullException(nameof(registerFunc));
+            }
+
+            lock (RegistrationCallbackSyncRoot)
+            {
+                if (!RegisterFuncCollection.ContainsKey(shortKey) &&
+                    RegisterFuncCollection.Count >= _maximumRegistrationCallbackCount)
+                {
+                    throw new InvalidOperationException(
+                        $"注册委托数量已达到上限 {_maximumRegistrationCallbackCount}，请先注销不再使用的账号或提高 MaximumRegistrationCallbackCount。");
+                }
+
+                RegisterFuncCollection[shortKey] = registerFunc;
+            }
+        }
+
+        /// <summary>注销指定账号，同时移除自动重注册委托和缓存项。</summary>
+        public static bool Unregister(string shortKey)
+        {
+            if (shortKey == null)
+            {
+                throw new ArgumentNullException(nameof(shortKey));
+            }
+
+            var callbackRemoved = RegisterFuncCollection.TryRemove(shortKey, out _);
+            RemoveFromCache(shortKey);
+            return callbackRemoved;
+        }
+
+        /// <summary>异步注销指定账号，同时移除自动重注册委托和缓存项。</summary>
+        public static async Task<bool> UnregisterAsync(string shortKey)
+        {
+            if (shortKey == null)
+            {
+                throw new ArgumentNullException(nameof(shortKey));
+            }
+
+            var callbackRemoved = RegisterFuncCollection.TryRemove(shortKey, out _);
+            await RemoveFromCacheAsync(shortKey).ConfigureAwait(false);
+            return callbackRemoved;
+        }
+
+        /// <summary>清除当前容器类型的全部自动重注册委托。现有缓存项保持不变。</summary>
+        public static void ClearRegistrationCallbacks()
+        {
+            RegisterFuncCollection.Clear();
+        }
 
 
         /// <summary>
@@ -268,8 +379,10 @@ namespace Senparc.Weixin.Containers
         /// <returns></returns>
         public static List<TBag> GetAllItems()
         {
+            _ = Cache;//确保容器缓存策略已初始化，并同步完成可能的热切换
+            var containerCache = _containerCache;
             //return Cache.GetAll<TBag>().Values
-            return _containerCache.GetAll<TBag>().Values
+            return containerCache.GetAll<TBag>().Values
                 //如果需要做进一步的筛选，则使用Select或Where，但需要注意效率问题
                 //.Select(z => z)
                 .ToList();
@@ -322,6 +435,7 @@ namespace Senparc.Weixin.Containers
             if (bag == null)
             {
                 Cache.RemoveFromCache(cacheKey);
+                return;
             }
             else
             {
@@ -402,10 +516,10 @@ namespace Senparc.Weixin.Containers
         {
             var cacheKey = GetBagCacheKey(shortKey);
             var registered = Cache.CheckExisted(cacheKey);
-            if (!registered && RegisterFuncCollection.ContainsKey(shortKey))
+            if (!registered && RegisterFuncCollection.TryGetValue(shortKey, out var registerFunc))
             {
                 //如果注册不成功，测尝试重新注册（前提是已经进行过注册），这种情况适用于分布式缓存被清空（重启）的情况。
-                RegisterFuncCollection[shortKey]().GetAwaiter().GetResult();//使用同步方法返回
+                registerFunc().ConfigureAwait(false).GetAwaiter().GetResult();//使用同步方法返回
             }
 
             return Cache.CheckExisted(cacheKey);
@@ -478,8 +592,10 @@ namespace Senparc.Weixin.Containers
         /// <returns></returns>
         public static async Task<List<TBag>> GetAllItemsAsync()
         {
+            _ = Cache;//确保容器缓存策略已初始化，并同步完成可能的热切换
+            var containerCache = _containerCache;
             //return Cache.GetAll<TBag>().Values
-            return (await _containerCache.GetAllAsync<TBag>().ConfigureAwait(false)).Values
+            return (await containerCache.GetAllAsync<TBag>().ConfigureAwait(false)).Values
                 //如果需要做进一步的筛选，则使用Select或Where，但需要注意效率问题
                 //.Select(z => z)
                 .ToList();
@@ -530,6 +646,7 @@ namespace Senparc.Weixin.Containers
             if (bag == null)
             {
                 await Cache.RemoveFromCacheAsync(cacheKey).ConfigureAwait(false);
+                return;
             }
             else
             {
@@ -611,10 +728,10 @@ namespace Senparc.Weixin.Containers
             var cacheKey = GetBagCacheKey(shortKey);
             var registered = await Cache.CheckExistedAsync(cacheKey).ConfigureAwait(false);
 
-            if (!registered && RegisterFuncCollection.ContainsKey(shortKey))
+            if (!registered && RegisterFuncCollection.TryGetValue(shortKey, out var registerFunc))
             {
                 //如果注册不成功，测尝试重新注册（前提是已经进行过注册），这种情况适用于分布式缓存被清空（重启）的情况。
-                await RegisterFuncCollection[shortKey]().ConfigureAwait(false);//使用异步方法返回
+                await registerFunc().ConfigureAwait(false);//使用异步方法返回
             }
 
             return await Cache.CheckExistedAsync(cacheKey).ConfigureAwait(false);
@@ -634,4 +751,3 @@ namespace Senparc.Weixin.Containers
 
     }
 }
-

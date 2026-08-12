@@ -1,15 +1,21 @@
 ﻿/*----------------------------------------------------------------
     文件名：WXBizMsgCrypt.cs
     文件功能描述：加解密算法
-    
-    
-    创建标识：Senparc - 20150313
-    
+
+
+    创建标识：Senparc - 20140920
+
     修改标识：Senparc - 20150313
     修改描述：整理接口
 
     修改标识：Senparc - 20191005
     修改描述：合并更新官方最新示例（没有实质变化）：https://work.weixin.qq.com/api/doc#90000/90138/90307/c#%E5%BA%93
+
+    修改标识：Senparc - 20260718
+    修改描述：v3.31.1 规范 SHA1 哈希资源释放
+
+    修改标识：Senparc - 20260724
+    修改描述：v3.32.1 补齐企业微信通讯录、安全、智能机器人、微信客服和获客助手接口
 
 ----------------------------------------------------------------*/
 
@@ -154,6 +160,93 @@ namespace Senparc.Weixin.Work.Tencent
             return 0;
         }
 
+        /// <summary>
+        /// 校验并解密 JSON 回调。适用于企业微信智能机器人等直接以 encrypt 字段承载密文的场景。
+        /// </summary>
+        /// <param name="sMsgSignature">企业微信消息签名。</param>
+        /// <param name="sTimeStamp">签名时间戳。</param>
+        /// <param name="sNonce">签名随机字符串。</param>
+        /// <param name="sEncryptMsg">待解密的密文。</param>
+        /// <param name="sMsg">输出的解密消息。</param>
+        /// <returns>微信接口返回结果。</returns>
+        public int DecryptJsonMsg(string sMsgSignature, string sTimeStamp, string sNonce,
+            string sEncryptMsg, ref string sMsg)
+        {
+            if (m_sEncodingAESKey.Length != 43)
+            {
+                return (int)WXBizMsgCryptErrorCode.WXBizMsgCrypt_IllegalAesKey;
+            }
+
+            var ret = VerifySignature(m_sToken, sTimeStamp, sNonce, sEncryptMsg, sMsgSignature);
+            if (ret != 0)
+            {
+                return ret;
+            }
+
+            var receiveId = "";
+            try
+            {
+                sMsg = Cryptography.AES_decrypt(sEncryptMsg, m_sEncodingAESKey, ref receiveId);
+            }
+            catch (FormatException)
+            {
+                sMsg = "";
+                return (int)WXBizMsgCryptErrorCode.WXBizMsgCrypt_DecodeBase64_Error;
+            }
+            catch (Exception)
+            {
+                sMsg = "";
+                return (int)WXBizMsgCryptErrorCode.WXBizMsgCrypt_DecryptAES_Error;
+            }
+
+            return receiveId == m_sReceiveId
+                ? 0
+                : (int)WXBizMsgCryptErrorCode.WXBizMsgCrypt_ValidateCorpid_Error;
+        }
+
+        /// <summary>
+        /// 加密 JSON 回复并生成企业微信要求的签名字段。
+        /// </summary>
+        /// <param name="sReplyMsg">待加密的回复消息。</param>
+        /// <param name="sTimeStamp">签名时间戳。</param>
+        /// <param name="sNonce">签名随机字符串。</param>
+        /// <param name="sEncryptedReply">输出的加密回复 JSON。</param>
+        /// <returns>微信接口返回结果。</returns>
+        public int EncryptJsonMsg(string sReplyMsg, string sTimeStamp, string sNonce,
+            ref BotEncryptedReply sEncryptedReply)
+        {
+            if (m_sEncodingAESKey.Length != 43)
+            {
+                return (int)WXBizMsgCryptErrorCode.WXBizMsgCrypt_IllegalAesKey;
+            }
+
+            string encrypted;
+            try
+            {
+                encrypted = Cryptography.AES_encrypt(sReplyMsg, m_sEncodingAESKey, m_sReceiveId);
+            }
+            catch (Exception)
+            {
+                return (int)WXBizMsgCryptErrorCode.WXBizMsgCrypt_EncryptAES_Error;
+            }
+
+            var signature = "";
+            var ret = GenarateSinature(m_sToken, sTimeStamp, sNonce, encrypted, ref signature);
+            if (ret != 0)
+            {
+                return ret;
+            }
+
+            sEncryptedReply = new BotEncryptedReply
+            {
+                encrypt = encrypted,
+                msgsignature = signature,
+                timestamp = long.TryParse(sTimeStamp, out var timestamp) ? timestamp : 0,
+                nonce = sNonce
+            };
+            return 0;
+        }
+
         //将企业号回复用户的消息加密打包
         // @param sReplyMsg: 企业号待回复用户的消息，xml格式的字符串
         // @param sTimeStamp: 时间戳，可以自己生成，也可以用URL参数的timestamp
@@ -252,21 +345,22 @@ namespace Senparc.Weixin.Work.Tencent
                 raw += AL[i];
             }
 
-            SHA1 sha;
             ASCIIEncoding enc;
             string hash = "";
             try
             {
 #if NET462
-                sha = new SHA1CryptoServiceProvider();
+                using (var sha = new SHA1CryptoServiceProvider())
 #else
-                sha = SHA1.Create();
+                using (var sha = SHA1.Create())
 #endif
-                enc = new ASCIIEncoding();
-                byte[] dataToHash = enc.GetBytes(raw);
-                byte[] dataHashed = sha.ComputeHash(dataToHash);
-                hash = BitConverter.ToString(dataHashed).Replace("-", "");
-                hash = hash.ToLower();
+                {
+                    enc = new ASCIIEncoding();
+                    byte[] dataToHash = enc.GetBytes(raw);
+                    byte[] dataHashed = sha.ComputeHash(dataToHash);
+                    hash = BitConverter.ToString(dataHashed).Replace("-", "");
+                    hash = hash.ToLower();
+                }
             }
             catch (Exception)
             {

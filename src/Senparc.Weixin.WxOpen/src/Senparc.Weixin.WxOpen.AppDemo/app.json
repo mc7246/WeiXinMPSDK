@@ -1,4 +1,21 @@
 {
+  "lazyCodeLoading": "requiredComponents",
+  "agent": {
+    "skills": [
+      {
+        "name": "senparc-login-ws",
+        "description": "Senparc SDK 登录鉴权与 WebSocket 实时通信演示",
+        "path": "skills/senparc-login-ws"
+      }
+    ]
+  },
+  "subPackages": [
+    {
+      "root": "skills",
+      "independent": true,
+      "pages": []
+    }
+  ],
   "pages": [
     "pages/index/index",
     "pages/logs/logs",

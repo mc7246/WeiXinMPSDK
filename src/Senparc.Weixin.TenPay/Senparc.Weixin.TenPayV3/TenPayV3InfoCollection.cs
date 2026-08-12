@@ -25,7 +25,7 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
     文件功能描述：微信支付V3信息集合，Key为商户号（MchId）
 
 
-    创建标识：Senparc - 20150211
+    创建标识：Senparc - 20140810
 
     修改标识：Senparc - 20150303
     修改描述：整理接口
@@ -40,11 +40,19 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
     修改描述：v1.4.0 .NET Core 添加多证书注册功能
 
     TODO：升级为Container
+
+    修改标识：Senparc - 20260718
+    修改描述：v2.4.1 为商户配置集合增加线程安全访问
+
+    修改标识：Senparc - 20260718
+    修改描述：v2.5.0 保持商户配置集合线程安全并适配公钥刷新
+
 ----------------------------------------------------------------*/
 
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Threading;
 #if NETSTANDARD2_0 || NETSTANDARD2_1
 using Microsoft.Extensions.DependencyInjection;
 #endif
@@ -60,6 +68,8 @@ namespace Senparc.Weixin.TenPayV3
     /// </summary>
     public class TenPayV3InfoCollection : Dictionary<string, TenPayV3Info>
     {
+        private readonly object _syncRoot = new object();
+
         /// <summary>
         /// 微信支付信息集合，Key为商户号（MchId）
         /// </summary>
@@ -98,10 +108,15 @@ namespace Senparc.Weixin.TenPayV3
         /// <param name="senparcWeixinSettingForTenpayV3"></param>
         /// <param name="tenpaySerialNumber"></param>
         /// <returns></returns>
-        public static async Task<string> GetAPIv3PublicKeyAsync(ISenparcWeixinSettingForTenpayV3 senparcWeixinSettingForTenpayV3, string tenpaySerialNumber)
+        public static Task<string> GetAPIv3PublicKeyAsync(ISenparcWeixinSettingForTenpayV3 senparcWeixinSettingForTenpayV3, string tenpaySerialNumber)
+        {
+            return GetAPIv3PublicKeyAsync(senparcWeixinSettingForTenpayV3, tenpaySerialNumber, CancellationToken.None);
+        }
+
+        public static async Task<string> GetAPIv3PublicKeyAsync(ISenparcWeixinSettingForTenpayV3 senparcWeixinSettingForTenpayV3, string tenpaySerialNumber, CancellationToken cancellationToken)
         {
             var tenpayV3InfoKey = TenPayHelper.GetRegisterKey(senparcWeixinSettingForTenpayV3.TenPayV3_MchId, senparcWeixinSettingForTenpayV3.TenPayV3_SubMchId);
-            var pubKey = await Data[tenpayV3InfoKey].GetPublicKeyAsync(tenpaySerialNumber, senparcWeixinSettingForTenpayV3);
+            var pubKey = await Data[tenpayV3InfoKey].GetPublicKeyAsync(tenpaySerialNumber, senparcWeixinSettingForTenpayV3, cancellationToken).ConfigureAwait(false);
             return pubKey;
         }
 
@@ -114,18 +129,76 @@ namespace Senparc.Weixin.TenPayV3
         {
             get
             {
-                if (!base.ContainsKey(key))
+                lock (_syncRoot)
                 {
-                    throw new WeixinException(string.Format("TenPayV3InfoCollection尚未注册Mch：{0}", key));
-                }
-                else
-                {
-                    return base[key];
+                    if (!base.TryGetValue(key, out var value))
+                    {
+                        throw new WeixinException(string.Format("TenPayV3InfoCollection尚未注册Mch：{0}", key));
+                    }
+
+                    return value;
                 }
             }
             set
             {
-                base[key] = value;
+                lock (_syncRoot)
+                {
+                    base[key] = value;
+                }
+            }
+        }
+
+        /// <summary>
+        /// 获取当前注册数量。
+        /// </summary>
+        public new int Count
+        {
+            get
+            {
+                lock (_syncRoot)
+                {
+                    return base.Count;
+                }
+            }
+        }
+
+        public new void Add(string key, TenPayV3Info value)
+        {
+            lock (_syncRoot)
+            {
+                base.Add(key, value);
+            }
+        }
+
+        public new bool Remove(string key)
+        {
+            lock (_syncRoot)
+            {
+                return base.Remove(key);
+            }
+        }
+
+        public new bool ContainsKey(string key)
+        {
+            lock (_syncRoot)
+            {
+                return base.ContainsKey(key);
+            }
+        }
+
+        public new bool TryGetValue(string key, out TenPayV3Info value)
+        {
+            lock (_syncRoot)
+            {
+                return base.TryGetValue(key, out value);
+            }
+        }
+
+        public new void Clear()
+        {
+            lock (_syncRoot)
+            {
+                base.Clear();
             }
         }
 
@@ -140,4 +213,3 @@ namespace Senparc.Weixin.TenPayV3
        
     }
 }
-

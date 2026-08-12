@@ -25,13 +25,13 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
     文件功能描述：通过CommonJsonSend中的方法调用接口
 
 
-    创建标识：Senparc - 20151012
-           
+    创建标识：Senparc - 20131031
+
     修改标识：Senparc - 20170606
     修改描述：v14.4.11 完善CommonJsonSend.SendAsync()方法参数
-  
+
     修改标识：Senparc - 20190129
-    修改描述：v6.3.8 修复 CommonJsonSend.Send() 方法中的异常请求结果自动抛出 
+    修改描述：v6.3.8 修复 CommonJsonSend.Send() 方法中的异常请求结果自动抛出
 
     修改标识：Senparc - 20190602
     修改描述：v6.4.8 根据 Config.ThrownWhenJsonResultFaild 优化 getFailAction 和 postFailAction 抛出异常逻辑
@@ -45,11 +45,22 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
     修改标识：Senparc - 20231026
     修改描述：v6.16.6 优化 postFailAction 中的异常记录
 
+    修改标识：Senparc - 20260718
+    修改描述：v6.24.0 移除 JSON 请求的额外 UTF-8 整体缓冲
+
+    修改标识：Senparc - 20260726
+    修改描述：v6.25.0 新增基于 JsonTypeInfo 的同步和异步微信 API 请求入口；增强微信 API 请求序列化、错误响应与 Native AOT 兼容能力
+
 ----------------------------------------------------------------*/
 
 using System;
 using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Senparc.CO2NET.Extensions;
 using Senparc.CO2NET.Helpers;
@@ -57,6 +68,7 @@ using Senparc.CO2NET.Helpers.Serializers;
 using Senparc.Weixin.Entities;
 using Senparc.Weixin.Exceptions;
 using Senparc.CO2NET.HttpUtility;
+using Senparc.Weixin.Helpers.Serializers;
 
 namespace Senparc.Weixin.CommonAPIs
 {
@@ -65,6 +77,11 @@ namespace Senparc.Weixin.CommonAPIs
     /// </summary>
     public static class CommonJsonSend
     {
+        private static readonly HttpClient AotHttpClient = new HttpClient(new HttpClientHandler
+        {
+            UseCookies = false
+        });
+
         #region 公共私有方法
 
         /// <summary>
@@ -77,7 +94,7 @@ namespace Senparc.Weixin.CommonAPIs
              if (returnText.Contains("errcode"))
              {
                  //可能发生错误
-                 WxJsonResult errorResult = SerializerHelper.GetObject<WxJsonResult>(returnText);
+                 WxJsonResult errorResult = WeixinJsonSerializer.DeserializeWxJsonResult(returnText);
 
                  ErrorJsonResultException ex = null;
                  if (errorResult.errcode != ReturnCode.请求成功)
@@ -103,11 +120,13 @@ namespace Senparc.Weixin.CommonAPIs
             if (returnText.Contains("errcode"))
             {
                 //可能发生错误
-                WxJsonResult errorResult = SerializerHelper.GetObject<WxJsonResult>(returnText);
+                WxJsonResult errorResult = WeixinJsonSerializer.DeserializeWxJsonResult(returnText);
                 ErrorJsonResultException ex = null;
                 if (errorResult.errcode != ReturnCode.请求成功)
                 {
-                    var hints = errorResult.Hints?.ToJson();
+                    var hints = errorResult.Hints is JsonElement hintsElement
+                        ? hintsElement.GetRawText()
+                        : errorResult.Hints?.ToString();
                     if (!string.IsNullOrWhiteSpace(hints))
                     {
                         hints = $"Hints：{hints}";
@@ -178,8 +197,11 @@ namespace Senparc.Weixin.CommonAPIs
                         var jsonString = SerializerHelper.GetJsonString(data, jsonSetting);
                         using (MemoryStream ms = new MemoryStream())
                         {
-                            var bytes = Encoding.UTF8.GetBytes(jsonString);
-                            ms.Write(bytes, 0, bytes.Length);
+                            using (var writer = new StreamWriter(ms, new UTF8Encoding(false), 1024, true))
+                            {
+                                writer.Write(jsonString);
+                                writer.Flush();
+                            }
                             ms.Seek(0, SeekOrigin.Begin);
 
                             WeixinTrace.SendApiPostDataLog(url, jsonString);//记录Post的Json数据
@@ -254,8 +276,11 @@ namespace Senparc.Weixin.CommonAPIs
                         var jsonString = SerializerHelper.GetJsonString(data, jsonSetting);
                         using (MemoryStream ms = new MemoryStream())
                         {
-                            var bytes = Encoding.UTF8.GetBytes(jsonString);
-                            await ms.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
+                            using (var writer = new StreamWriter(ms, new UTF8Encoding(false), 1024, true))
+                            {
+                                await writer.WriteAsync(jsonString).ConfigureAwait(false);
+                                await writer.FlushAsync().ConfigureAwait(false);
+                            }
                             ms.Seek(0, SeekOrigin.Begin);
 
                             WeixinTrace.SendApiPostDataLog(url, jsonString);//记录Post的Json数据
@@ -279,6 +304,167 @@ namespace Senparc.Weixin.CommonAPIs
         }
 
         #endregion
+
+        #region Native AOT 兼容方法
+
+        /// <summary>
+        /// 使用 System.Text.Json 源生成元数据发送微信 API 请求。
+        /// </summary>
+        /// <typeparam name="TRequest">请求数据类型。</typeparam>
+        /// <typeparam name="TResponse">响应数据类型。</typeparam>
+        /// <param name="accessToken">AccessToken；不需要时可为 null。</param>
+        /// <param name="urlFormat">API 地址。</param>
+        /// <param name="data">POST 请求数据；GET 请求时可为默认值。</param>
+        /// <param name="requestJsonTypeInfo">请求类型的源生成 JSON 元数据。</param>
+        /// <param name="responseJsonTypeInfo">响应类型的源生成 JSON 元数据。</param>
+        /// <param name="sendType">请求方法。</param>
+        /// <param name="timeOut">超时时间（毫秒）。</param>
+        /// <param name="contentType">Content-Type。</param>
+        /// <param name="httpClient">可选的 HttpClient；需要代理、自定义证书校验等行为时由调用方配置并传入。</param>
+        public static TResponse Send<TRequest, TResponse>(
+            string accessToken,
+            string urlFormat,
+            TRequest data,
+            JsonTypeInfo<TRequest> requestJsonTypeInfo,
+            JsonTypeInfo<TResponse> responseJsonTypeInfo,
+            CommonJsonSendType sendType = CommonJsonSendType.POST,
+            int timeOut = CO2NET.Config.TIME_OUT,
+            string contentType = null,
+            HttpClient httpClient = null)
+        {
+            try
+            {
+                var url = string.IsNullOrEmpty(accessToken) ? urlFormat : string.Format(urlFormat, accessToken.AsUrlData());
+                string returnText;
+
+                switch (sendType)
+                {
+                    case CommonJsonSendType.GET:
+                        using (var request = new HttpRequestMessage(HttpMethod.Get, url))
+                        {
+                            returnText = SendAotRequestAsync(request, timeOut, httpClient, CancellationToken.None)
+                                .GetAwaiter()
+                                .GetResult();
+                        }
+                        getFailAction(url, returnText);
+                        break;
+                    case CommonJsonSendType.POST:
+                        var jsonString = WeixinJsonSerializer.Serialize(data, requestJsonTypeInfo);
+                        using (var request = CreateAotPostRequest(url, jsonString, contentType))
+                        {
+                            WeixinTrace.SendApiPostDataLog(url, jsonString);
+                            returnText = SendAotRequestAsync(request, timeOut, httpClient, CancellationToken.None)
+                                .GetAwaiter()
+                                .GetResult();
+                        }
+
+                        WeixinTrace.SendApiLog(url, returnText);
+                        postFailAction(url, returnText);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(sendType));
+                }
+
+                return WeixinJsonSerializer.Deserialize(returnText, responseJsonTypeInfo);
+            }
+            catch (ErrorJsonResultException ex)
+            {
+                ex.Url = urlFormat;
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 异步使用 System.Text.Json 源生成元数据发送微信 API 请求。
+        /// </summary>
+        public static async Task<TResponse> SendAsync<TRequest, TResponse>(
+            string accessToken,
+            string urlFormat,
+            TRequest data,
+            JsonTypeInfo<TRequest> requestJsonTypeInfo,
+            JsonTypeInfo<TResponse> responseJsonTypeInfo,
+            CommonJsonSendType sendType = CommonJsonSendType.POST,
+            int timeOut = CO2NET.Config.TIME_OUT,
+            string contentType = null,
+            HttpClient httpClient = null,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var url = string.IsNullOrEmpty(accessToken) ? urlFormat : string.Format(urlFormat, accessToken.AsUrlData());
+                string returnText;
+
+                switch (sendType)
+                {
+                    case CommonJsonSendType.GET:
+                        using (var request = new HttpRequestMessage(HttpMethod.Get, url))
+                        {
+                            returnText = await SendAotRequestAsync(request, timeOut, httpClient, cancellationToken).ConfigureAwait(false);
+                        }
+                        getFailAction(url, returnText);
+                        break;
+                    case CommonJsonSendType.POST:
+                        var jsonString = WeixinJsonSerializer.Serialize(data, requestJsonTypeInfo);
+                        using (var request = CreateAotPostRequest(url, jsonString, contentType))
+                        {
+                            WeixinTrace.SendApiPostDataLog(url, jsonString);
+                            returnText = await SendAotRequestAsync(request, timeOut, httpClient, cancellationToken).ConfigureAwait(false);
+                        }
+
+                        WeixinTrace.SendApiLog(url, returnText);
+                        postFailAction(url, returnText);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(sendType));
+                }
+
+                return WeixinJsonSerializer.Deserialize(returnText, responseJsonTypeInfo);
+            }
+            catch (ErrorJsonResultException ex)
+            {
+                ex.Url = urlFormat;
+                throw;
+            }
+        }
+
+        private static HttpRequestMessage CreateAotPostRequest(string url, string json, string contentType)
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            var content = new StringContent(json, new UTF8Encoding(false));
+            var contentTypeHeader = MediaTypeHeaderValue.Parse(
+                string.IsNullOrWhiteSpace(contentType) ? "application/json" : contentType);
+            if (string.IsNullOrWhiteSpace(contentTypeHeader.CharSet))
+            {
+                contentTypeHeader.CharSet = "utf-8";
+            }
+
+            content.Headers.ContentType = contentTypeHeader;
+            request.Content = content;
+            return request;
+        }
+
+        private static async Task<string> SendAotRequestAsync(
+            HttpRequestMessage request,
+            int timeOut,
+            HttpClient httpClient,
+            CancellationToken cancellationToken)
+        {
+            using (var timeoutTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                if (timeOut > 0)
+                {
+                    timeoutTokenSource.CancelAfter(timeOut);
+                }
+
+                var client = httpClient ?? AotHttpClient;
+                using (var response = await client.SendAsync(request, timeoutTokenSource.Token).ConfigureAwait(false))
+                {
+                    response.EnsureSuccessStatusCode();
+                    return await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                }
+            }
+        }
+
+        #endregion
     }
 }
-

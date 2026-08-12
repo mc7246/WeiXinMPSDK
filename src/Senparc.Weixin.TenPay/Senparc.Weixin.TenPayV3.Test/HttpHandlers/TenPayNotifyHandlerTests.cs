@@ -5,12 +5,109 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
+using System.Threading;
 
 namespace Senparc.Weixin.TenPayV3.Test.HttpHandlers
 {
     [TestClass]
     public class TenPayNotifyHandlerTests
     {
+        private static SenparcWeixinSettingItem CreateSetting()
+        {
+            return new SenparcWeixinSettingItem
+            {
+                TenPayV3_AppId = "test-appid",
+                TenPayV3_MchId = "test-mchid",
+                TenPayV3_APIv3Key = "12345678901234567890123456789012",
+                TenPayV3_TenpayNotify = "https://test.com/notify",
+                TenPayV3_PrivateKey = "test-private-key",
+                EncryptionType = CertType.RSA
+            };
+        }
+
+        [TestMethod]
+        public async Task CreateAsyncRejectsOversizedBody()
+        {
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = "POST";
+            httpContext.Request.ContentLength = 128;
+            httpContext.Request.Body = new MemoryStream(new byte[128]);
+
+            await Assert.ThrowsExceptionAsync<InvalidDataException>(() =>
+                TenPayNotifyHandler.CreateAsync(httpContext, CreateSetting(), maxBodyBytes: 64));
+        }
+
+        [TestMethod]
+        public void LegacyConstructorAllowsBodyLargerThanNewDefaultLimit()
+        {
+            var body = Encoding.UTF8.GetBytes("{\"padding\":\"" +
+                new string('a', TenPayNotifyHandler.DefaultMaxBodyBytes) + "\"}");
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = "POST";
+            httpContext.Request.ContentLength = body.Length;
+            httpContext.Request.Body = new MemoryStream(body);
+
+            var handler = new TenPayNotifyHandler(httpContext, CreateSetting());
+
+            Assert.IsNotNull(handler);
+            Assert.AreEqual(0, httpContext.Request.Body.Position);
+        }
+
+        [TestMethod]
+        public async Task CreateAsyncHonorsCancellation()
+        {
+            var httpContext = new DefaultHttpContext();
+            httpContext.Request.Method = "POST";
+            httpContext.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes("{}"));
+            using var cancellation = new CancellationTokenSource();
+            cancellation.Cancel();
+
+            try
+            {
+                await TenPayNotifyHandler.CreateAsync(httpContext, CreateSetting(), cancellationToken: cancellation.Token);
+                Assert.Fail("应传播取消异常。");
+            }
+            catch (OperationCanceledException)
+            {
+                // TaskCanceledException 也是合法的取消传播。
+            }
+        }
+
+        [TestMethod]
+        public async Task NotificationIdAndRawBodyProvideStableIdempotencyInputs()
+        {
+            const string notificationId = "EV-202607241234567890";
+            var json = "{\"id\":\"" + notificationId +
+                       "\",\"create_time\":\"2026-07-24T12:00:00+08:00\"," +
+                       "\"resource_type\":\"encrypt-resource\"," +
+                       "\"event_type\":\"TRANSACTION.SUCCESS\",\"summary\":\"test\"," +
+                       "\"resource\":{\"original_type\":\"transaction\"," +
+                       "\"algorithm\":\"AEAD_AES_256_GCM\",\"ciphertext\":\"cipher\"," +
+                       "\"associated_data\":\"data\",\"nonce\":\"nonce\"}}";
+
+            var first = await TenPayNotifyHandler.CreateAsync(
+                CreateContext(json), CreateSetting());
+            var retry = await TenPayNotifyHandler.CreateAsync(
+                CreateContext(json), CreateSetting());
+
+            Assert.AreEqual(notificationId, first.NotificationId);
+            Assert.AreEqual(notificationId, first.Notification.id);
+            Assert.AreEqual(first.NotificationId, retry.NotificationId,
+                "同一官方通知重试必须暴露相同的幂等键。");
+            Assert.AreEqual(json, first.RawBody);
+        }
+
+        private static DefaultHttpContext CreateContext(string json)
+        {
+            var bytes = Encoding.UTF8.GetBytes(json);
+            var context = new DefaultHttpContext();
+            context.Request.Method = "POST";
+            context.Request.ContentLength = bytes.Length;
+            context.Request.ContentType = "application/json";
+            context.Request.Body = new MemoryStream(bytes);
+            return context;
+        }
+
         /// <summary>
         /// 测试 Request.Body 流在 TenPayNotifyHandler 读取后仍可被后续中间件读取
         /// </summary>

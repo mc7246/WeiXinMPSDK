@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>net462;netstandard2.0;netstandard2.1;netcoreapp3.1;net10.0</TargetFrameworks>
-    <Version>3.25.1</Version>
+    <Version>3.28.3</Version>
     <LangVersion>10.0</LangVersion>
     <AssemblyName>Senparc.Weixin.WxOpen</AssemblyName>
     <RootNamespace>Senparc.Weixin.WxOpen</RootNamespace>
@@ -24,61 +24,45 @@
     <PackageIcon>icon.jpg</PackageIcon>
     <PackageReleaseNotes>
 			v0.1.0 添加基础解决方案，包括模板消息API
-
 			v0.1.0 添加基础库，已包含模板消息API
 			v0.2.0
 			1、添加WxOpenMessageHandler
 			2、添加SuccessResponseMessage类型响应信息
 			v0.3.0 根据MP的架构重构框架
-
 			v1.0.0
 			2017年1月9日，随小程序正式发布
-
 			v1.1.0 添加CreateWxQRCode重写方法，直接保存文件
 			添加SessionContainer，SessionHelper，EncryptHelper
-
 			v1.2.0 添加消息解密方法
 			fix bug：修改模板消息接口URL
-
 			v1.2.1 fix bug：修改模板消息接口URL
-
 			v1.3.0 支持.NET Core
-
 			v1.4.0 完成接口开放平台-代码管理及小程序码获取
-
 			v1.4.1
 			1、增加GetWxaCodeUnlimit接口
 			2、为Tencent命名空间添加Senparc.Weixin.WxOpen前缀
 			3、添加JsCode2JsonResult.unionid
-
 			v1.5.0
 			1、支持.NET Core 2.0
-
 			v1.6.0
 			1、添加获取用户手机号方法（同时提供了Demo）
-
 			v1.7.0-beta1 提供.NET 4.0支持
 			v1.7.1 发布正式版；修复WxAppApi.GetWxaCodeUnlimit()方法参数错误的问题
 			v1.7.2 支持Senparc.Weixin v4.18.5 可自定义API域名
 			v1.7.3 修复ModifyDomainApi.ModifyDomain()方法判断问题
 			v1.7.4 完善模板消息发送参数
-
 			v1.8.0 支持小程序
 			1、添加 WxAppApi.CheckSession() 接口，检验SessionKey
 			2、添加 DataCubeApi，包含所有“数据”接口
 			v1.8.1 新增附近的小程序API
 			v1.8.2 从 Open 中迁移模板消息过来，在 Senparc.Weixin.WxOpen.AdvancedAPIs.TemplateApi下
-
 			v1.9.0
 			1、停止对 .net core 1.1 生成的独立版本
 			2、待分配 WxAppApi.GetWxaCode()、GetWxaCodeUnlimit() 接口，添加获取小程序二维码时的颜色参数。
 			v1.9.1 提供 RegisterServices 进行快捷注册
 			v1.9.2 更新 WxAppApi.GetWxaCodeUnlimit() 参数引用
-
 			v1.10.0-rc1 支持 .NET Core 2.1.0-rc1-final
-
 			v1.10.5 发布支持 .net core 2.1 的正式版
-
 			v2.0.0 引入 Senparc.CO2NET，支持 Senparc.Weixin v5.0
 			V2.0.3 SessionBag 添加 UnionId 属性
 			v2.0.6.1 支持 CO2NET v0.1.6.1 解决 XXE 漏洞
@@ -94,7 +78,6 @@
 			v2.3.0 单独设立小程序客服接口（AdvancedAPIs.CustomApi），支持所有小程序客服消息类型
 			v2.4.0 添加校验文字及图片是否含有违法内容的接口
 			v2.4.1 fixbug：TemplateApi.LibraryGet() 方法修正 API 地址
-
 			v3.0.0 支持 NeuChar 标准
 			v3.0.1 支持 Senparc.Weixin v6.0.1
 			v3.1.0 支持 Senparc.NeuChar v0.0.5
@@ -191,7 +174,37 @@
 		[2025-08-16] v3.23.8 fix: 修复 GetWxaCodeUnlimit() 方法 Page 参数问题
 		[2025-11-05] v3.24.1 fix: 修复 WxAppApi.ToWxJsonResult() 方法会自动释放 stream 参数的问题 感谢 @bbhxwl
 		[2026-01-18] v3.25.0 feat: 增加发送用工消息、解除用工关系 API #3246 感谢 @dodu2014
-</PackageReleaseNotes>
+		[2026-05-23] v3.25.1 feat: 更新 URL Link API，支持安全提示配置（safety_notice）和扩展响应字段（warn_icon, entrance_url, entrance_icon）
+		[2026-06-02] v3.26.0 feat: add: vpay signature 虚拟支付 ##3294 感谢 @mojinxun
+		[2026-06-17] v3.26.1 fix: 修复小程序虚拟支付接口参数问题（PR #3304） 感谢 @mojinxun @lilinjian2001
+		[2026-06-17] v3.27.0 feat: 添加 iOS 会员订阅支持（wx.requestAppleSubscribeSign 签名辅助、签约结果及退款推送事件处理）#3297 / PR #3307 感谢 @Copilot
+		[2026-06-25] v3.27.1 fix: 修复 query_user_balance 接口 first_save_flag 字段类型错误 / Issue #3308 感谢 @zhangliang2008
+		[2026-06-26] v3.27.2 fix: 修复 微信小程序虚拟支付，IOS退款消息推送，属性错误！ / Issue #3310 / PR #3311 感谢 @lilinjian2001
+		[2026-07-18] v3.27.3 修复小程序凭据并发刷新与过期会话清理
+		1、同步完成 AccessToken 容器注册，并在分布式锁内二次检查凭据状态
+		2、通过容器统一入口清理过期会话，确保缓存状态同步
+		[2026-07-20] v3.28.0 新增可注入小程序客户端并增强消息与凭据管理
+		1、新增 WxOpenApiClient 和外部凭据提供器注册入口
+		2、完善注册容量检查、消息上下文安全设置与响应生成兼容性
+		[2026-07-23] v3.28.1 升级小程序基础依赖
+		1、升级 NeuChar 3.0.0
+		2、显式保留 Newtonsoft.Json 13.0.4 以兼容现有小程序模型
+		3、补齐基础、用户、运维、客服、消息、硬件和云开发等 52 项 P1 能力
+		4、补齐物流助手运力方审核、轨迹、面单、联系人、订单、账单和投诉等 10 项 P2 能力
+		5、补齐即时配送商户侧和运力方下单、查询、取消、模拟、状态更新等 15 项 P2 能力
+		6、补齐微信物流查询、消息、退货、运力方推送、无忧退货和同城配送全部 40 个目录项（39 个唯一接口）
+		7、补齐交易管理特殊发货报备、品牌申请与状态查询、交易类型变更 4 项 P2 能力
+		8、补齐交易保障违规记录、保障标、评价评论、客服额度、和解及投诉处理全链路 16 项 P2 能力
+		9、补齐虚拟支付 iOS 月结账单和商户管控原因，修复可提现余额及广告金账户绑定路径并完善返回模型
+		10、补齐 B2B 门店助手门店授权、消息、商户进件、订单退款、资金提现、分账及退款通知全链路 34 项 P2 能力
+		11、补齐小程序短剧媒资、剧目审核、统计、授权和播放器 41 个官方目录项（40 个唯一接口），并新增媒资上传完成和剧目审核状态事件
+		12、补齐小程序小说作品、章节、账号与作品授权、预览设置和读后推荐全部 23 项 P2 能力
+		13、补齐小程序直播间、商品、成员和长期订阅全部 38 项 P2 能力，并新增订阅状态和群发结果事件
+		14、补齐学生身份、城市服务、图像与 OCR、红包封面、服务市场、生物认证和人脸核身全部 22 项 P3 能力
+		15、补齐小程序物流、交易、直播、短剧、小说和行业能力接口及事件
+		[2026-07-31] v3.28.2 Dependency update from Senparc.Weixin.MP to 16.25.2 and Senparc.Weixin to 6.25.1
+		[2026-08-05] v3.28.3 Dependency update from Senparc.Weixin.MP to 16.25.3
+    </PackageReleaseNotes>
     <RepositoryUrl>https://github.com/JeffreySu/WeiXinMPSDK</RepositoryUrl>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Release' ">
@@ -230,7 +243,8 @@
     <Reference Include="System.Xml.Linq" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Senparc.NeuChar" Version="2.6.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="Senparc.NeuChar" Version="3.0.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\..\Senparc.Weixin.MP\Senparc.Weixin.MP\Senparc.Weixin.MP.net10.csproj" />

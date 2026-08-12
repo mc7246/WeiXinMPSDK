@@ -80,6 +80,7 @@ Detail: https://github.com/JeffreySu/WeiXinMPSDK/blob/master/license.md
 
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using Senparc.CO2NET.Extensions;
 using Senparc.NeuChar;
@@ -319,20 +320,78 @@ namespace Senparc.Weixin.MP.AdvancedAPIs
         {
             return ApiHandlerWapper.TryCommonApi(accessToken =>
             {
-                string urlFormat = string.Format(Config.ApiMpHost + "/cgi-bin/material/get_material?access_token={0}", (object)accessToken.AsUrlData());
-
-                var data = new
-                {
-                    media_id = mediaId
-                };
-
                 if (stream != null)
                 {
-                    stream.Seek(0, SeekOrigin.Begin);
-                    CO2NET.HttpUtility.Post.Download(CommonDI.CommonSP, urlFormat, data.ToJson(), stream);
+                    GetForeverMediaWithContentTypeInternal(accessToken, mediaId, stream, timeOut);
                 }
                 return new WxJsonResult() { errcode = ReturnCode.请求成功, errmsg = "ok" };//无实际意义
             }, accessTokenOrAppId);
+        }
+
+        /// <summary>
+        /// 获取永久素材(除了图文、视频)，包含响应 Content-Type 信息
+        /// </summary>
+        /// <param name="accessTokenOrAppId">AccessToken或AppId（推荐使用AppId，需要先注册）</param>
+        /// <param name="mediaId">要获取的素材的media_id</param>
+        /// <param name="stream">写入文件流</param>
+        /// <param name="timeOut"></param>
+        /// <returns></returns>
+        public static GetForeverMediaResultJson GetForeverMediaWithContentType(string accessTokenOrAppId, string mediaId, Stream stream, int timeOut = Config.TIME_OUT)
+        {
+            return ApiHandlerWapper.TryCommonApi(accessToken =>
+            {
+                return GetForeverMediaWithContentTypeInternal(accessToken, mediaId, stream, timeOut);
+            }, accessTokenOrAppId);
+        }
+
+        private static GetForeverMediaResultJson GetForeverMediaWithContentTypeInternal(string accessToken, string mediaId, Stream stream, int timeOut)
+        {
+            var result = new GetForeverMediaResultJson()
+            {
+                errcode = ReturnCode.请求成功,
+                errmsg = "ok"
+            };
+
+            if (stream == null)
+            {
+                return result;
+            }
+
+            var urlFormat = string.Format(Config.ApiMpHost + "/cgi-bin/material/get_material?access_token={0}", accessToken.AsUrlData());
+            var data = new
+            {
+                media_id = mediaId
+            };
+
+            stream.Seek(0, SeekOrigin.Begin);
+
+            using (var postStream = new MemoryStream(Encoding.UTF8.GetBytes(data.ToJson())))
+            {
+                var response = CO2NET.HttpUtility.RequestUtility.HttpResponsePost(
+                    CommonDI.CommonSP,
+                    urlFormat,
+                    postStream: postStream,
+                    encoding: Encoding.UTF8,
+                    timeOut: timeOut,
+                    hasFormData: false,
+                    contentType: "application/json");
+
+#if NET462
+                result.content_type = response?.Result?.ContentType;
+                using (var responseStream = response?.Result?.GetResponseStream())
+                {
+                    responseStream?.CopyTo(stream);
+                }
+#else
+                result.content_type = response?.Result?.Content?.Headers?.ContentType?.ToString();
+                using (var responseStream = response?.Result?.Content?.ReadAsStreamAsync().GetAwaiter().GetResult())
+                {
+                    responseStream?.CopyTo(stream);
+                }
+#endif
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -813,20 +872,85 @@ namespace Senparc.Weixin.MP.AdvancedAPIs
 
             return await ApiHandlerWapper.TryCommonApiAsync(async accessToken =>
             {
-                string urlFormat = string.Format(Config.ApiMpHost + "/cgi-bin/material/get_material?access_token={0}", (object)accessToken.AsUrlData());
-
-                var data = new
-                {
-                    media_id = mediaId
-                };
-
                 if (stream != null)
                 {
-                    stream.Seek(0, SeekOrigin.Begin);
-                    await CO2NET.HttpUtility.Post.DownloadAsync(CommonDI.CommonSP, urlFormat, data.ToJson(), stream).ConfigureAwait(false);
+                    await GetForeverMediaWithContentTypeAsyncInternal(accessToken, mediaId, stream, timeOut).ConfigureAwait(false);
                 }
                 return new WxJsonResult() { errcode = ReturnCode.请求成功, errmsg = "ok" };//无实际意义
             }, accessTokenOrAppId).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 【异步方法】获取永久素材(除了图文、视频)，包含响应 Content-Type 信息
+        /// </summary>
+        /// <param name="accessTokenOrAppId">AccessToken或AppId（推荐使用AppId，需要先注册）</param>
+        /// <param name="mediaId">要获取的素材的media_id</param>
+        /// <param name="stream">写入文件流</param>
+        /// <param name="timeOut"></param>
+        /// <returns></returns>
+        public static async Task<GetForeverMediaResultJson> GetForeverMediaWithContentTypeAsync(string accessTokenOrAppId, string mediaId, Stream stream, int timeOut = Config.TIME_OUT)
+        {
+            return await ApiHandlerWapper.TryCommonApiAsync(async accessToken =>
+            {
+                return await GetForeverMediaWithContentTypeAsyncInternal(accessToken, mediaId, stream, timeOut).ConfigureAwait(false);
+            }, accessTokenOrAppId).ConfigureAwait(false);
+        }
+
+        private static async Task<GetForeverMediaResultJson> GetForeverMediaWithContentTypeAsyncInternal(string accessToken, string mediaId, Stream stream, int timeOut)
+        {
+            var result = new GetForeverMediaResultJson()
+            {
+                errcode = ReturnCode.请求成功,
+                errmsg = "ok"
+            };
+
+            if (stream == null)
+            {
+                return result;
+            }
+
+            var urlFormat = string.Format(Config.ApiMpHost + "/cgi-bin/material/get_material?access_token={0}", accessToken.AsUrlData());
+            var data = new
+            {
+                media_id = mediaId
+            };
+
+            stream.Seek(0, SeekOrigin.Begin);
+
+            using (var postStream = new MemoryStream(Encoding.UTF8.GetBytes(data.ToJson())))
+            {
+                var response = await CO2NET.HttpUtility.RequestUtility.HttpResponsePostAsync(
+                    CommonDI.CommonSP,
+                    urlFormat,
+                    postStream: postStream,
+                    encoding: Encoding.UTF8,
+                    hasFormData: false,
+                    timeOut: timeOut,
+                    contentType: "application/json").ConfigureAwait(false);
+
+#if NET462
+                result.content_type = response?.Result?.ContentType;
+                using (var responseStream = response?.Result?.GetResponseStream())
+                {
+                    if (responseStream != null)
+                    {
+                        await responseStream.CopyToAsync(stream).ConfigureAwait(false);
+                    }
+                }
+#else
+                var httpContent = response?.Result?.Content;
+                result.content_type = httpContent?.Headers?.ContentType?.ToString();
+                if (httpContent != null)
+                {
+                    using (var responseStream = await httpContent.ReadAsStreamAsync().ConfigureAwait(false))
+                    {
+                        await responseStream.CopyToAsync(stream).ConfigureAwait(false);
+                    }
+                }
+#endif
+            }
+
+            return result;
         }
 
         /// <summary>

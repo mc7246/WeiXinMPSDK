@@ -293,6 +293,21 @@ namespace Senparc.Weixin.MP.Test.AdvancedAPIs
             }
         }
 
+        [TestMethod]
+        public void GetForeverMediaWithContentTypeTest()
+        {
+            var mediaId = UploadForeverMediaTest();
+            var accessToken = AccessTokenContainer.GetAccessToken(_appId);
+            using (MemoryStream stream = new MemoryStream())
+            {
+                var result = MediaApi.GetForeverMediaWithContentType(accessToken, mediaId, stream);
+
+                Assert.IsTrue(stream.Length > 0);
+                Assert.IsFalse(string.IsNullOrWhiteSpace(result.content_type));
+                Console.WriteLine("永久素材Content-Type：" + result.content_type);
+            }
+        }
+
         //[TestMethod]
         private void GetForeverNewsTest(string accessToken, string mediaId)
         {
